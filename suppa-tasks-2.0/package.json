@@ -1,6 +1,6 @@
 {
-  "name": "@suppa-skills/suppa-tasks",
-  "version": "2.0.0",
+  "name": "@taniant/suppa-tasks",
+  "version": "2.1.0",
   "description": "Copilot skill for Suppa Tasks management — create, search, update, delete tasks, comments, workflows",
   "bin": {
     "suppa-tasks": "./install.js"

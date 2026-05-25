@@ -1,6 +1,6 @@
 {
-  "name": "@suppa-skills/suppa-entity",
-  "version": "2.0.0",
+  "name": "@taniant/suppa-entity",
+  "version": "2.1.0",
   "description": "Copilot skill for Suppa Entity Builder — create entities, add fields, define enums, search records",
   "bin": {
     "suppa-entity": "./install.js"

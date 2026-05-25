@@ -6,23 +6,29 @@ Copilot custom skills for the [Suppa platform](https://modern.suppa.me). Each sk
 
 | Skill | Package | Description |
 |-------|---------|-------------|
-| `suppa-tasks` | `@suppa-skills/suppa-tasks` | Create, search, update, delete tasks; comments; workflows; stages |
-| `suppa-entity` | `@suppa-skills/suppa-entity` | Create entities, add fields, define enums, search records |
+| `suppa-tasks` | `@taniant/suppa-tasks` | Create, search, update, delete tasks; comments; workflows; stages |
+| `suppa-entity` | `@taniant/suppa-entity` | Create entities, add fields, define enums, search records |
 
 ---
 
 ## Installation
 
-### Option 1: Install via npx (recommended)
+### Install via npx (recommended)
 
 ```bash
-npx @suppa-skills/suppa-tasks
-npx @suppa-skills/suppa-entity
+npx @taniant/suppa-tasks
+npx @taniant/suppa-entity
 ```
 
-This downloads the skill from npm and copies it into `~/.copilot/skills/` automatically. No tokens or registry config needed.
+This installs each skill for **both** VS Code Copilot and Claude Code:
 
-### Option 2: Clone and copy manually
+| IDE | Install location |
+|-----|-----------------|
+| VS Code Copilot | `~/.copilot/skills/<name>/SKILL.md` |
+| Claude Code | `~/.claude/commands/<name>.md` |
+| Shared scripts | `~/.ai-skills/<name>/scripts/suppa_api.py` |
+
+### Manual install (clone repo)
 
 ```powershell
 # Windows
@@ -40,8 +46,9 @@ cp -r ./skills/suppa-entity-2.0 ~/.copilot/skills/suppa-entity
 
 ### After installation
 
-1. Reload VS Code window (`Ctrl+Shift+P` → "Reload Window")
-2. Set the required environment variable in your terminal:
+1. **VS Code Copilot**: Reload window (`Ctrl+Shift+P` → "Reload Window")
+2. **Claude Code**: Restart the session. Use `/suppa-tasks` or `/suppa-entity` commands
+3. Set the required environment variable in your terminal:
 
 ```powershell
 $env:SUPPA_API_KEY = "<your-suppa-token>"         # Required
