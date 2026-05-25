@@ -56,7 +56,7 @@ $env:SUPPA_BASE_URL = "https://modern.suppa.me"   # Optional (default)
 $env:PYTHONIOENCODING = "utf-8"                   # Recommended on Windows
 ```
 
-3. Test by asking Copilot: "мої задачі" or "list all entities"
+4. Test by asking Copilot: "мої задачі" or "list all entities"
 
 ---
 
