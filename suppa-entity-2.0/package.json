@@ -1,0 +1,24 @@
+{
+  "name": "@suppa-skills/suppa-entity",
+  "version": "2.0.0",
+  "description": "Copilot skill for Suppa Entity Builder — create entities, add fields, define enums, search records",
+  "bin": {
+    "suppa-entity": "./install.js"
+  },
+  "files": [
+    "SKILL.md",
+    "install.js",
+    "references/**",
+    "scripts/**"
+  ],
+  "keywords": ["copilot", "skill", "suppa", "entity", "builder"],
+  "repository": {
+    "type": "git",
+    "url": "https://git.modern-expo.com/asu/me-development/skills.git",
+    "directory": "suppa-entity-2.0"
+  },
+  "publishConfig": {
+    "@suppa-skills:registry": "https://git.modern-expo.com/api/v4/projects/204/packages/npm/"
+  },
+  "license": "UNLICENSED"
+}

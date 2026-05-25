@@ -1,0 +1,24 @@
+{
+  "name": "@suppa-skills/suppa-tasks",
+  "version": "2.0.0",
+  "description": "Copilot skill for Suppa Tasks management — create, search, update, delete tasks, comments, workflows",
+  "bin": {
+    "suppa-tasks": "./install.js"
+  },
+  "files": [
+    "SKILL.md",
+    "install.js",
+    "references/**",
+    "scripts/**"
+  ],
+  "keywords": ["copilot", "skill", "suppa", "tasks"],
+  "repository": {
+    "type": "git",
+    "url": "https://git.modern-expo.com/asu/me-development/skills.git",
+    "directory": "suppa-tasks-2.0"
+  },
+  "publishConfig": {
+    "@suppa-skills:registry": "https://git.modern-expo.com/api/v4/projects/204/packages/npm/"
+  },
+  "license": "UNLICENSED"
+}

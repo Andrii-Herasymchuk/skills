@@ -1,93 +1,280 @@
-# Skills
+# Suppa Skills
 
+Copilot custom skills for the [Suppa platform](https://modern.suppa.me). Each skill gives GitHub Copilot (in VS Code) the ability to interact with Suppa APIs — managing tasks, entities, fields, and more — via natural language.
 
+## Available Skills
 
-## Getting started
+| Skill | Folder | Description |
+|-------|--------|-------------|
+| `suppa-tasks` | `suppa-tasks-2.0/` | Create, search, update, delete tasks; comments; workflows; stages |
+| `suppa-entity` | `suppa-entity-2.0/` | Create entities, add fields, define enums, search records |
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+---
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## Connecting Skills in VS Code
 
-## Add your files
+### Option 1: User-level installation (available in all workspaces)
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+Copy (or symlink) the skill folder into your global Copilot skills directory:
+
+```powershell
+# Windows
+Copy-Item -Recurse .\suppa-tasks-2.0 "$env:USERPROFILE\.copilot\skills\suppa-tasks"
+Copy-Item -Recurse .\suppa-entity-2.0 "$env:USERPROFILE\.copilot\skills\suppa-entity"
+
+# Or create symlinks (run as Admin)
+New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.copilot\skills\suppa-tasks" -Target "D:\skills\suppa-tasks-2.0"
+New-Item -ItemType SymbolicLink -Path "$env:USERPROFILE\.copilot\skills\suppa-entity" -Target "D:\skills\suppa-entity-2.0"
+```
+
+```bash
+# macOS / Linux
+cp -r ./suppa-tasks-2.0 ~/.copilot/skills/suppa-tasks
+cp -r ./suppa-entity-2.0 ~/.copilot/skills/suppa-entity
+
+# Or symlinks
+ln -s "$(pwd)/suppa-tasks-2.0" ~/.copilot/skills/suppa-tasks
+ln -s "$(pwd)/suppa-entity-2.0" ~/.copilot/skills/suppa-entity
+```
+
+### Option 2: Workspace-level installation (available only in one project)
+
+Copy the skill folder into your project's `.copilot/skills/` directory:
+
+```powershell
+# From your project root
+Copy-Item -Recurse D:\skills\suppa-tasks-2.0 .\.copilot\skills\suppa-tasks
+Copy-Item -Recurse D:\skills\suppa-entity-2.0 .\.copilot\skills\suppa-entity
+```
+
+### Option 3: Install via npx
+
+First, configure the registry (one-time):
+
+```bash
+npm set @suppa-skills:registry=https://git.modern-expo.com/api/v4/projects/204/packages/npm/
+npm set //git.modern-expo.com/api/v4/projects/204/packages/npm/:_authToken=<YOUR_GITLAB_TOKEN>
+```
+
+Then install skills:
+
+```bash
+npx @suppa-skills/suppa-tasks
+npx @suppa-skills/suppa-entity
+```
+
+### Verify installation
+
+After installing, restart VS Code (or reload the window). The skills will appear in Copilot's skill list. Test by asking Copilot:
+
+> "Show my active tasks in Suppa"
+
+or
+
+> "List all entities on the tenant"
+
+### Required environment variables
+
+Before using the skills, set these in your terminal:
+
+```powershell
+$env:SUPPA_API_KEY = "<your-token>"          # Required
+$env:SUPPA_BASE_URL = "https://modern.suppa.me"  # Optional, this is the default
+$env:PYTHONIOENCODING = "utf-8"              # Recommended on Windows
+```
+
+---
+
+## Publishing Skills (so others can install via `npx`)
+
+### Skill folder structure
+
+Each skill must follow this layout:
 
 ```
-cd existing_repo
-git remote add origin https://git.modern-expo.com/asu/me-development/skills.git
-git branch -M main
-git push -uf origin main
+suppa-tasks/
+├── SKILL.md              # Entry point — YAML frontmatter + instructions
+├── package.json          # npm package metadata + bin entry
+├── install.js            # CLI script that copies skill to ~/.copilot/skills/
+├── references/
+│   ├── api-endpoints.md
+│   └── field-formats.md
+└── scripts/
+    └── suppa_api.py
 ```
 
-## Integrate with your tools
+### Step 1: Add `package.json` to each skill
 
-- [ ] [Set up project integrations](https://git.modern-expo.com/asu/me-development/skills/-/settings/integrations)
+Create a `package.json` in the skill folder:
 
-## Collaborate with your team
+```json
+{
+  "name": "@modern-expo/suppa-tasks",
+  "version": "2.0.0",
+  "description": "Copilot skill for Suppa Tasks management",
+  "bin": {
+    "suppa-tasks": "./install.js"
+  },
+  "files": [
+    "SKILL.md",
+    "install.js",
+    "references/**",
+    "scripts/**"
+  ],
+  "keywords": ["copilot", "skill", "suppa", "tasks"],
+  "repository": {
+    "type": "git",
+    "url": "https://git.modern-expo.com/asu/me-development/skills.git"
+  },
+  "license": "UNLICENSED"
+}
+```
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+### Step 2: Create `install.js` (the CLI entry point)
 
-## Test and Deploy
+```js
+#!/usr/bin/env node
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
-Use the built-in continuous integration in GitLab.
+const SKILL_NAME = 'suppa-tasks'; // change per skill
+const src = __dirname;
+const dest = path.join(os.homedir(), '.copilot', 'skills', SKILL_NAME);
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+// Create target directory
+fs.mkdirSync(dest, { recursive: true });
 
-***
+// Copy all skill files
+function copyDir(srcDir, destDir) {
+  fs.mkdirSync(destDir, { recursive: true });
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    const srcPath = path.join(srcDir, entry.name);
+    const destPath = path.join(destDir, entry.name);
+    if (entry.name === 'node_modules' || entry.name === 'package.json' || entry.name === 'install.js') continue;
+    if (entry.isDirectory()) {
+      copyDir(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
 
-# Editing this README
+copyDir(src, dest);
+console.log(`✓ Skill "${SKILL_NAME}" installed to ${dest}`);
+console.log('  Reload VS Code to activate.');
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+### Step 3: Publish to GitLab npm registry
 
-## Suggestions for a good README
+#### Configure `.npmrc` in the skill folder
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+```ini
+@modern-expo:registry=https://git.modern-expo.com/api/v4/projects/<PROJECT_ID>/packages/npm/
+//git.modern-expo.com/api/v4/projects/<PROJECT_ID>/packages/npm/:_authToken=${GITLAB_TOKEN}
+```
 
-## Name
-Choose a self-explaining name for your project.
+#### Publish
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+```bash
+# Authenticate (one-time)
+export GITLAB_TOKEN="<your-gitlab-personal-access-token>"
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+# From the skill folder
+cd suppa-tasks-2.0
+npm publish
+```
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+### Step 4: Users install via npx
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+Once published, anyone with registry access can install:
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+```bash
+# Install to ~/.copilot/skills/ (one-time)
+npx @modern-expo/suppa-tasks
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+# Or with explicit registry
+npx --registry=https://git.modern-expo.com/api/v4/projects/<PROJECT_ID>/packages/npm/ @modern-expo/suppa-tasks
+```
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+---
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+## Alternative: Universal `skill` CLI tool
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+If you want a single `npx skill install <repo>` command that works with any skill repo, create a separate package (e.g. `@modern-expo/skill`):
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+```json
+{
+  "name": "@modern-expo/skill",
+  "version": "1.0.0",
+  "bin": { "skill": "./cli.js" }
+}
+```
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+The CLI (`cli.js`) would:
+1. Accept a GitLab repo URL + skill name
+2. Clone/download the skill folder to a temp dir
+3. Copy it into `~/.copilot/skills/<skill-name>/`
 
-## License
-For open source projects, say how it is licensed.
+```js
+#!/usr/bin/env node
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+const [,, command, repoUrl, ...args] = process.argv;
+
+if (command === 'install') {
+  const skillFlag = args.indexOf('--skill');
+  const skillName = skillFlag !== -1 ? args[skillFlag + 1] : null;
+
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-'));
+  execSync(`git clone --depth 1 "${repoUrl}" "${tmp}"`, { stdio: 'inherit' });
+
+  const folders = skillName
+    ? [fs.readdirSync(tmp).find(f => f.includes(skillName))]
+    : fs.readdirSync(tmp).filter(f => fs.existsSync(path.join(tmp, f, 'SKILL.md')));
+
+  for (const folder of folders) {
+    const name = folder.replace(/-[\d.]+$/, ''); // strip version suffix
+    const dest = path.join(os.homedir(), '.copilot', 'skills', name);
+    fs.cpSync(path.join(tmp, folder), dest, { recursive: true });
+    console.log(`✓ Installed "${name}" → ${dest}`);
+  }
+
+  fs.rmSync(tmp, { recursive: true });
+  console.log('Reload VS Code to activate.');
+} else {
+  console.log('Usage: skill install <git-repo-url> [--skill <name>]');
+}
+```
+
+After publishing this CLI package:
+
+```bash
+npx @modern-expo/skill install https://git.modern-expo.com/asu/me-development/skills.git --skill suppa-tasks
+```
+
+---
+
+## Repository structure
+
+```
+skills/
+├── README.md
+├── suppa-tasks-2.0/
+│   ├── SKILL.md
+│   ├── references/
+│   │   ├── api-endpoints.md
+│   │   └── field-formats.md
+│   └── scripts/
+│       └── suppa_api.py
+└── suppa-entity-2.0/
+    ├── SKILL.md
+    ├── references/
+    │   ├── api-endpoints.md
+    │   └── field-formats.md
+    └── scripts/
+        └── suppa_api.py
+```
