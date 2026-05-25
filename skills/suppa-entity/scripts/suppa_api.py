@@ -179,6 +179,7 @@ FIELD_TYPES = {
     "timestamp":      {"type": "timestamp", "subType": "timestamp"},
     "json":           {"type": "json"},
     "enum":           {"type": "enum"},
+    "multi-enum":     {"type": "multi-enum"},
     "icon":           {"type": "icon"},
     "uuid":           {"type": "uuid"},
     "relation":       {"type": "many-to-one"},
