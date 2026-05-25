@@ -14,11 +14,11 @@
   "keywords": ["copilot", "skill", "suppa", "tasks"],
   "repository": {
     "type": "git",
-    "url": "https://git.modern-expo.com/asu/me-development/skills.git",
+    "url": "https://github.com/Andrii-Herasymchuk/skills.git",
     "directory": "suppa-tasks-2.0"
   },
   "publishConfig": {
-    "@suppa-skills:registry": "https://git.modern-expo.com/api/v4/projects/204/packages/npm/"
+    "access": "public"
   },
-  "license": "UNLICENSED"
+  "license": "MIT"
 }
