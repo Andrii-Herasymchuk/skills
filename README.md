@@ -8,6 +8,7 @@ Agent skills for the [Suppa platform](https://modern.suppa.me). Works with GitHu
 |-------|-------------|
 | `suppa-tasks` | Create, search, update, delete tasks; comments; workflows; stages |
 | `suppa-entity` | Create entities, add fields, define enums, search records |
+| `suppa-docs` | Manage documents, pages, and page blocks (content); write articles |
 
 ---
 
@@ -26,7 +27,7 @@ This will auto-detect your installed agents and install the skills to the correc
 npx skills add Andrii-Herasymchuk/skills -g
 
 # Install a specific skill only
-npx skills add Andrii-Herasymchuk/skills --skill suppa-tasks
+npx skills add Andrii-Herasymchuk/skills --skill suppa-docs
 
 # Install to specific agents
 npx skills add Andrii-Herasymchuk/skills -a github-copilot -a claude-code
@@ -45,7 +46,7 @@ $env:SUPPA_BASE_URL = "https://modern.suppa.me"   # Optional (default)
 $env:PYTHONIOENCODING = "utf-8"                   # Recommended on Windows
 ```
 
-Test by asking your agent: "мої задачі" or "list all entities"
+Test by asking your agent: "list docs", "create page", or "get blocks"
 
 ---
 
@@ -62,7 +63,14 @@ skills/
     │   │   └── field-formats.md
     │   └── scripts/
     │       └── suppa_api.py
-    └── suppa-entity/
+    ├── suppa-entity/
+    │   ├── SKILL.md
+    │   ├── references/
+    │   │   ├── api-endpoints.md
+    │   │   └── field-formats.md
+    │   └── scripts/
+    │       └── suppa_api.py
+    └── suppa-docs/
         ├── SKILL.md
         ├── references/
         │   ├── api-endpoints.md
