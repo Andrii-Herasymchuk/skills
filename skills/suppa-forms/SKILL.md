@@ -283,16 +283,135 @@ A form is stored as:
 }
 ```
 
+### formSettings
+
+```json
+{
+    "id": 0,
+    "size": "md",
+    "type": "form",
+    "method": "POST",
+    "formKey": "",
+    "endpoint": "",
+    "entityId": "Tasks",
+    "formType": "customForm",
+    "columnsNumber": 2,
+    "multilingual": false,
+    "targetFormId": 96,
+    "useTransaction": true,
+    "showSubmitButton": false,
+    "validateOnChange": true,
+    "validateOnSubmit": true
+}
+```
+
+- `columnsNumber` — defines the top-level CSS Grid columns (default: 1)
+- `entityId` — entity name this form is bound to
+- `formType` — same as the form's `type` field
+- `targetFormId` — reference form ID (for customForm overriding elementForm)
+
+### Field structure (TField)
+
 Each field in `formShema` has at minimum:
 ```json
 {
     "id": "uuid-string",
+    "fieldId": "fieldName",
     "name": "fieldName",
     "type": "text",
-    "label": { "en_US": "Field Label" },
-    "position": { "lg": { "x": 1, "y": 1 } },
+    "label": { "en": "Field Label", "uk": "Мітка", "pl": "Etykieta" },
+    "position": {
+        "lg": { "x": 1, "y": 1 },
+        "sm": { "x": 1, "y": 1 },
+        "default": { "x": 1, "y": 1 }
+    },
     "columns": { "lg": { "container": 1 } },
     "rows": { "lg": { "container": 1 } }
+}
+```
+
+**Labels** use ISO 639-1 codes: `en`, `uk`, `pl` (NOT `en_US`).
+
+**Position** uses 3 breakpoints: `lg` (desktop), `sm` (mobile), `default` (fallback).
+The renderer resolves values with fallback chain: `lg → sm → default → raw`.
+
+### Grid/Position system
+
+The form uses **CSS Grid** for layout:
+- `columnsNumber` on a container defines `grid-template-columns: repeat(N, 1fr)`
+- `position.lg.x` = grid-column-start (1-indexed)
+- `position.lg.y` = grid-row-start (1-indexed)
+- `columns.lg.container` = grid column span (how many columns the field occupies)
+- `rows.lg.container` = grid row span
+
+**Position math for equal sub-columns** (when parent has columnsNumber=12):
+```
+X = (12 / numberOfColumns) * columnIndex + 1
+```
+Example — 3 equal columns in a 12-column grid: x=1, x=5, x=9
+
+**Y position** auto-increments:
+```
+newY = MAX(all_fields: position.y + rows.container - 1) + 1
+```
+
+### Nesting (structure elements)
+
+Structure elements use the `schema` key (NOT `children`) for nested fields:
+```json
+{
+    "type": "group",
+    "name": "myGroup",
+    "columnsNumber": 2,
+    "schema": [
+        { "type": "text", "name": "field1", "position": {"lg": {"x":1, "y":1}}, ... },
+        { "type": "text", "name": "field2", "position": {"lg": {"x":2, "y":1}}, ... }
+    ]
+}
+```
+
+Children positions are **relative to parent grid** (not the form root).
+
+### Select field items (relations & enums)
+
+```json
+{
+    "type": "select",
+    "items": {
+        "targetEntityId": 42,
+        "targetEntityName": "Projects",
+        "targetValueField": "id",
+        "targetLabelField": "title",
+        "itemsFilter": []
+    },
+    "options": { "valueIsObject": true, "multiple": false }
+}
+```
+
+For enums:
+```json
+{
+    "items": {
+        "enum_id": "Tasks.priority",
+        "targetType": "internal",
+        "targetEntityName": "Enums",
+        "targetValueField": "id",
+        "targetLabelField": "title"
+    }
+}
+```
+
+### Button properties
+
+```json
+{
+    "type": "button",
+    "buttonLabel": { "en": "Save", "uk": "Зберегти" },
+    "color": "primary",
+    "variant": "elevated",
+    "rounded": "md",
+    "size": "default",
+    "fontWeight": "500"
 }
 ```
 

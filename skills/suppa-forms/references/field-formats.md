@@ -51,24 +51,35 @@ Every field in `data.formShema[]` must have this shape:
 ```json
 {
   "id": "uuid-string",
+  "fieldId": "fieldName",
   "name": "fieldName",
   "type": "text",
-  "label": {"en_US": "Field Label", "uk_UA": "Назва"},
-  "position": {"lg": {"x": 1, "y": 1}},
+  "label": {"en": "Field Label", "uk": "Назва поля"},
+  "position": {
+    "lg": {"x": 1, "y": 1},
+    "sm": {"x": 1, "y": 1},
+    "default": {"x": 1, "y": 1}
+  },
   "columns": {"lg": {"container": 1}},
   "rows": {"lg": {"container": 1}}
 }
 ```
+
+**Labels** use ISO 639-1 codes: `en`, `uk`, `pl` (NOT locale codes like `en_US`).
+
+**Position** uses 3 breakpoints: `lg` (desktop ≥1024px), `sm` (mobile <1024px), `default` (fallback).
+The renderer resolves with fallback chain: lg → sm → default → raw object.
 
 ### Required Properties
 
 | Property | Type | Description |
 |----------|------|-------------|
 | `id` | string (UUID) | Unique field identifier |
+| `fieldId` | string | Builder reference ID (usually same as name) |
 | `name` | string | Unique field key (maps to entity property) |
 | `type` | string | One of the field types (see below) |
-| `label` | object | Multilingual labels: `{locale: text}` |
-| `position` | object | Grid position `{lg: {x, y}}` (1-based) |
+| `label` | object | Multilingual labels: `{en: text, uk: text}` |
+| `position` | object | Grid position `{lg: {x, y}, sm: {x, y}, default: {x, y}}` |
 | `columns` | object | Column span `{lg: {container: N}}` |
 | `rows` | object | Row span `{lg: {container: N}}` |
 
@@ -81,13 +92,16 @@ Every field in `data.formShema[]` must have this shape:
 | `rules` | any | Array: `["required", "email", "numeric", "maxLength:100"]` |
 | `items` | select, userSelect | Data source config (see §5) |
 | `options` | select, files | Behavior config: `{multiple, valueIsObject}` |
-| `schema` | group, tabs, steps | Nested field array |
-| `columnsNumber` | group | Grid columns inside group |
+| `schema` | group, flexGroup, tabs, steps, accordion | Nested field array |
+| `columnsNumber` | group | Grid columns inside group (for children layout) |
 | `content` | static | Text content for display |
 | `tag` | static | HTML tag: `"h1"`, `"h2"`, `"h3"`, `"h4"`, `"hr"`, `"text"` |
 | `color` | button | Button color: `"primary"`, `"success"`, `"danger"`, `"warning"` |
+| `variant` | button | Button variant: `"elevated"`, `"flat"`, `"outlined"`, `"text"`, `"tonal"` |
+| `rounded` | button | Border radius: `"md"`, `"sm"`, `"lg"`, `"xl"` |
+| `fontWeight` | button | CSS font-weight: `"400"`, `"500"`, `"600"`, `"700"` |
 | `icon` | button | Icon name string |
-| `buttonLabel` | button | Multilingual label `{locale: text}` |
+| `buttonLabel` | button | Multilingual button text `{en: text, uk: text}` |
 | `submit` | button, static | `true` = submit on click, `false` = just a button |
 | `widgetName` | widget | Component name: `"BaseChart"`, etc. |
 | `props` | widget | Props passed to widget component |
@@ -97,8 +111,16 @@ Every field in `data.formShema[]` must have this shape:
 | `conditions` | any | Show/hide conditions (see §6) |
 | `disabled` | any | Boolean — field is read-only |
 | `hidden` | any | Boolean — field is not rendered |
+| `visible` | any | Boolean — field visibility |
+| `isFullHeight` | any | Boolean — field takes full available height |
 | `placeholder` | text, textarea | Placeholder text (multilingual object) |
 | `description` | any | Help text below field (multilingual object) |
+| `containerPadding` | any | CSS padding for field container |
+| `containerMargin` | any | CSS margin for field container |
+| `xGap` | group | Horizontal gap between children |
+| `yGap` | group | Vertical gap between children |
+| `justifyContent` | flexGroup | Flex justify: `"start"`, `"center"`, `"end"`, `"space-between"` |
+| `alignItems` | flexGroup | Flex align: `"start"`, `"center"`, `"end"`, `"stretch"` |
 
 ---
 
@@ -108,34 +130,41 @@ Stored in `data.formSettings`:
 
 ```json
 {
-  "columnsNumber": 2,
-  "showSubmitButton": false,
-  "validateOnSubmit": true,
-  "validateOnChange": true,
+  "id": 0,
   "size": "md",
-  "multilingual": false,
+  "type": "form",
   "method": "POST",
   "formKey": "",
   "endpoint": "",
-  "id": 0,
+  "entityId": "Tasks",
+  "formType": "customForm",
+  "columnsNumber": 2,
+  "multilingual": false,
+  "targetFormId": 96,
   "useTransaction": true,
-  "type": "form"
+  "showSubmitButton": false,
+  "validateOnChange": true,
+  "validateOnSubmit": true
 }
 ```
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `columnsNumber` | integer | 1 | Grid columns (1–12) |
-| `showSubmitButton` | boolean | false | Auto submit button at bottom |
-| `validateOnSubmit` | boolean | true | Run validation on form submit |
-| `validateOnChange` | boolean | true | Run validation on field change |
+| `id` | integer | 0 | Internal settings ID |
 | `size` | string | "md" | Form size: "sm", "md", "lg" |
-| `multilingual` | boolean | false | Enable multilingual field values |
+| `type` | string | "form" | Internal type marker |
 | `method` | string | "POST" | HTTP method for webforms |
 | `formKey` | string | "" | Custom form key |
 | `endpoint` | string | "" | Custom submission endpoint (webforms) |
+| `entityId` | string | "" | Entity name this form is bound to |
+| `formType` | string | "elementForm" | Form type (same as form.type) |
+| `columnsNumber` | integer | 1 | Grid columns for top-level schema (1–12) |
+| `multilingual` | boolean | false | Enable multilingual field values |
+| `targetFormId` | integer | null | Reference form ID (customForm overriding elementForm) |
 | `useTransaction` | boolean | true | Wrap save in transaction |
-| `type` | string | "form" | Internal type marker |
+| `showSubmitButton` | boolean | false | Auto submit button at bottom |
+| `validateOnSubmit` | boolean | true | Run validation on form submit |
+| `validateOnChange` | boolean | true | Run validation on field change |
 
 ---
 

@@ -52,18 +52,19 @@ ENTITY_USERS = "Users"
 
 # Default form configuration
 DEFAULT_FORM_SETTINGS = {
-    "showSubmitButton": False,
-    "validateOnSubmit": True,
-    "validateOnChange": True,
+    "id": 0,
     "size": "md",
-    "multilingual": False,
+    "type": "form",
     "method": "POST",
     "formKey": "",
     "endpoint": "",
-    "id": 0,
+    "entityId": "",
+    "formType": "elementForm",
+    "multilingual": False,
     "useTransaction": True,
-    "type": "form",
-    "columnsNumber": 1,
+    "showSubmitButton": False,
+    "validateOnChange": True,
+    "validateOnSubmit": True,
 }
 
 # Entity type → form field type mapping
@@ -308,13 +309,20 @@ def _new_id():
 
 
 def make_field(field_type, name, label, position=None, columns=1, rows=1, **kwargs):
-    """Generate a single TField schema object with all required properties."""
+    """Generate a single TField schema object with all required properties.
+
+    Position uses 3 breakpoints: lg (desktop), sm (mobile), default (fallback).
+    Columns/rows use lg breakpoint with container key for grid span.
+    Labels use ISO 639-1 codes: en, uk, pl.
+    """
+    pos = position or {"x": 1, "y": 1}
     field = {
         "id": _new_id(),
+        "fieldId": kwargs.pop("field_id", name),
         "name": name,
         "type": field_type,
-        "label": {"en_US": label} if isinstance(label, str) else label,
-        "position": {"lg": position or {"x": 1, "y": 1}},
+        "label": {"en": label} if isinstance(label, str) else label,
+        "position": {"lg": pos, "sm": pos, "default": pos},
         "columns": {"lg": {"container": columns}},
         "rows": {"lg": {"container": rows}},
     }
@@ -327,15 +335,18 @@ def make_text_field(name, label, input_type="text", rules=None, **kwargs):
 
 
 def make_number_field(name, label, **kwargs):
-    return make_field("text", name, label, inputType="number", rules=["numeric"], **kwargs)
+    kwargs.setdefault("rules", ["numeric"])
+    return make_field("text", name, label, inputType="number", **kwargs)
 
 
 def make_email_field(name, label, **kwargs):
-    return make_field("text", name, label, inputType="email", rules=["email"], **kwargs)
+    kwargs.setdefault("rules", ["email"])
+    return make_field("text", name, label, inputType="email", **kwargs)
 
 
 def make_phone_field(name, label, **kwargs):
-    return make_field("text", name, label, inputType="phone", rules=["phone"], **kwargs)
+    kwargs.setdefault("rules", ["phone"])
+    return make_field("text", name, label, inputType="phone", **kwargs)
 
 
 def make_password_field(name, label, **kwargs):
@@ -392,11 +403,11 @@ def make_static_field(name, tag="text", content="", **kwargs):
     return make_field("static", name, content, tag=tag, content=content, submit=False, **kwargs)
 
 
-def make_button_field(name, label, color="primary", icon=None, **kwargs):
-    extra = {"color": color, "submit": False}
+def make_button_field(name, label, color="primary", variant="elevated", icon=None, **kwargs):
+    extra = {"color": color, "variant": variant, "submit": False, "rounded": "md", "size": "default", "fontWeight": "500"}
     if icon:
         extra["icon"] = icon
-    return make_field("button", name, label, buttonLabel={"en_US": label} if isinstance(label, str) else label, **extra, **kwargs)
+    return make_field("button", name, label, buttonLabel={"en": label} if isinstance(label, str) else label, **extra, **kwargs)
 
 
 def make_group_field(name, schema=None, columns_number=1, **kwargs):
@@ -424,7 +435,11 @@ def make_chart_field(name, chart_type, label="", **kwargs):
 # ---------------------------------------------------------------------------
 
 def auto_layout(fields, columns_number=1):
-    """Apply grid auto-layout: position fields sequentially in the grid."""
+    """Apply grid auto-layout: position fields sequentially in the grid.
+
+    Uses CSS Grid positioning: x = column start (1-indexed), container = colspan.
+    For columnsNumber=N: x ranges from 1..N, container ranges from 1..N.
+    """
     current_row = 1
     current_col = 1
 
@@ -438,9 +453,8 @@ def auto_layout(fields, columns_number=1):
             current_row += 1
             current_col = 1
 
-        if "position" not in field:
-            field["position"] = {}
-        field["position"]["lg"] = {"x": current_col, "y": current_row}
+        pos = {"x": current_col, "y": current_row}
+        field["position"] = {"lg": pos, "sm": pos, "default": pos}
 
         current_col += field_cols
         if current_col > columns_number:
@@ -486,9 +500,9 @@ def convert_entity_prop(prop, entity_name):
     if isinstance(prop_title, dict) and prop_title:
         label = prop_title
     elif isinstance(prop_title, str) and prop_title:
-        label = {"en_US": prop_title}
+        label = {"en": prop_title}
     else:
-        label = {"en_US": prop_name}
+        label = {"en": prop_name}
 
     # Base field
     field = make_field(form_type, prop_name, label, field_id=prop_name)
@@ -851,10 +865,14 @@ def cmd_create_form(args):
         settings.update(gen_settings)
 
     # Override settings
+    # Override settings
     if args.columns:
         settings["columnsNumber"] = args.columns
     if args.submit_button:
         settings["showSubmitButton"] = True
+    if args.entity:
+        settings["entityId"] = args.entity
+    settings["formType"] = args.type or "elementForm"
 
     # Module code
     module_code = None
@@ -1018,9 +1036,11 @@ def cmd_add_field(args):
     # Position at end
     max_y = 0
     for f in schema:
-        pos = f.get("position", {}).get("lg", {})
-        max_y = max(max_y, pos.get("y", 0))
-    new_field["position"] = {"lg": {"x": 1, "y": max_y + 1}}
+        pos = f.get("position", {}).get("lg", f.get("position", {}))
+        rows_val = f.get("rows", {}).get("lg", {}).get("container", 1)
+        max_y = max(max_y, pos.get("y", 0) + rows_val - 1)
+    new_pos = {"x": 1, "y": max_y + 1}
+    new_field["position"] = {"lg": new_pos, "sm": new_pos, "default": new_pos}
 
     schema.append(new_field)
     data["formShema"] = schema
