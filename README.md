@@ -9,6 +9,7 @@ Agent skills for the [Suppa platform](https://modern.suppa.me). Works with GitHu
 | `suppa-tasks` | Create, search, update, delete tasks; comments; workflows; stages |
 | `suppa-entity` | Create entities, add fields, define enums, search records |
 | `suppa-docs` | Manage documents, pages, and page blocks (content); write articles |
+| `suppa-forms` | Create, configure, and manage dynamic forms; schema generation |
 
 ---
 
@@ -46,7 +47,7 @@ $env:SUPPA_BASE_URL = "https://modern.suppa.me"   # Optional (default)
 $env:PYTHONIOENCODING = "utf-8"                   # Recommended on Windows
 ```
 
-Test by asking your agent: "list docs", "create page", or "get blocks"
+Test by asking your agent: "my tasks", "list entities", "create form", or "list docs"
 
 ---
 
@@ -70,7 +71,14 @@ skills/
     │   │   └── field-formats.md
     │   └── scripts/
     │       └── suppa_api.py
-    └── suppa-docs/
+    ├── suppa-docs/
+    │   ├── SKILL.md
+    │   ├── references/
+    │   │   ├── api-endpoints.md
+    │   │   └── field-formats.md
+    │   └── scripts/
+    │       └── suppa_api.py
+    └── suppa-forms/
         ├── SKILL.md
         ├── references/
         │   ├── api-endpoints.md

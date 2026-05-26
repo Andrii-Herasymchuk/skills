@@ -1,0 +1,6 @@
+# Installed skills (local artifact from `npx skills add`)
+.agents/
+skills-lock.json
+
+# GitHub Copilot prompts (auto-generated)
+.github/prompts/

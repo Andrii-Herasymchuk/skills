@@ -6,7 +6,7 @@ description: Create, update, list, and manage Dynamic Forms on the Suppa platfor
 # Suppa Forms (modern.suppa.me)
 
 Direct HTTP client for the Suppa Dynamic Forms REST API. All commands
-go through `scripts/suppa_forms.py`, a single-file Python script with **no
+go through `scripts/suppa_api.py`, a single-file Python script with **no
 external dependencies** (uses only the Python standard library).
 
 ## 0. Agent operating instructions (READ FIRST)
@@ -26,7 +26,7 @@ literally — most failures observed in the wild come from skipping these steps.
    confirm `accountId` and `tenant.clientUrl`.
 3. **Encoding.** On Windows always set `$env:PYTHONIOENCODING = "utf-8"` once
    per shell to avoid Unicode garbling in output.
-4. **Smoke test.** Run `python scripts/suppa_forms.py get-me` first. If it
+4. **Smoke test.** Run `python scripts/suppa_api.py get-me` first. If it
    returns the user object you have a working token + URL. If it 401s, the
    token is wrong/expired. If it 404s, the base URL is wrong.
 
@@ -105,7 +105,7 @@ Optional environment variables:
 ## 2. Commands — quick reference
 
 ```
-python scripts/suppa_forms.py <command> [options]
+python scripts/suppa_api.py <command> [options]
 ```
 
 ### Form CRUD
@@ -133,7 +133,7 @@ python scripts/suppa_forms.py <command> [options]
 ### Create an entity form from specific fields
 
 ```powershell
-python scripts/suppa_forms.py create-form `
+python scripts/suppa_api.py create-form `
     --entity Tasks `
     --type elementForm `
     --name "Task Create Form" `
@@ -144,7 +144,7 @@ python scripts/suppa_forms.py create-form `
 ### Create a form from ALL custom entity fields
 
 ```powershell
-python scripts/suppa_forms.py create-form `
+python scripts/suppa_api.py create-form `
     --entity Projects `
     --type elementForm `
     --name "Project Form" `
@@ -156,7 +156,7 @@ python scripts/suppa_forms.py create-form `
 ### Create from a template
 
 ```powershell
-python scripts/suppa_forms.py create-form `
+python scripts/suppa_api.py create-form `
     --template contact-form `
     --type customForm `
     --name "Contact Us"
@@ -168,7 +168,7 @@ Available templates: `entity-basic`, `contact-form`, `task-form`, `feedback`,
 ### Create from a schema JSON file
 
 ```powershell
-python scripts/suppa_forms.py create-form `
+python scripts/suppa_api.py create-form `
     --type customForm `
     --name "My Form" `
     --schema-file C:\schemas\my-form.json `
@@ -178,7 +178,7 @@ python scripts/suppa_forms.py create-form `
 ### Generate schema locally (preview without saving)
 
 ```powershell
-python scripts/suppa_forms.py generate-schema `
+python scripts/suppa_api.py generate-schema `
     --entity Projects `
     --fields "title,status,owner,budget,startDate" `
     --columns 2 `
@@ -189,36 +189,36 @@ python scripts/suppa_forms.py generate-schema `
 
 ```powershell
 # Update schema
-python scripts/suppa_forms.py update-form 1234 --schema-file C:\schemas\updated.json
+python scripts/suppa_api.py update-form 1234 --schema-file C:\schemas\updated.json
 
 # Update settings (merge)
-python scripts/suppa_forms.py update-form 1234 --settings-json "{\"columnsNumber\":2,\"showSubmitButton\":true}"
+python scripts/suppa_api.py update-form 1234 --settings-json "{\"columnsNumber\":2,\"showSubmitButton\":true}"
 
 # Update module code
-python scripts/suppa_forms.py update-form 1234 --module-file C:\modules\handlers.js
+python scripts/suppa_api.py update-form 1234 --module-file C:\modules\handlers.js
 
 # Rename
-python scripts/suppa_forms.py update-form 1234 --name "New Form Name"
+python scripts/suppa_api.py update-form 1234 --name "New Form Name"
 ```
 
 ### Add a field to an existing form
 
 ```powershell
-python scripts/suppa_forms.py add-field 1234 `
+python scripts/suppa_api.py add-field 1234 `
     --name "deadline" --type date --label "Deadline" --rules "required"
 ```
 
 ### Lock / unlock for editing
 
 ```powershell
-python scripts/suppa_forms.py lock-form   1234
-python scripts/suppa_forms.py unlock-form 1234
+python scripts/suppa_api.py lock-form   1234
+python scripts/suppa_api.py unlock-form 1234
 ```
 
 ### Validate a schema file
 
 ```powershell
-python scripts/suppa_forms.py validate-schema C:\schemas\my-form.json
+python scripts/suppa_api.py validate-schema C:\schemas\my-form.json
 ```
 
 ## 4. Form types
@@ -261,7 +261,7 @@ $json = @'
 {"columnsNumber":2,"showSubmitButton":true,"validateOnSubmit":true,"xGap":"16px","yGap":"12px"}
 '@
 $json | Set-Content -Encoding UTF8 "$env:TEMP\settings.json"
-python scripts/suppa_forms.py update-form 1234 --settings-json (Get-Content "$env:TEMP\settings.json" -Raw)
+python scripts/suppa_api.py update-form 1234 --settings-json (Get-Content "$env:TEMP\settings.json" -Raw)
 ```
 
 For schema files, always use `--schema-file` pointing to a real `.json` file.
