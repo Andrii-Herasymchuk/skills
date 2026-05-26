@@ -45,6 +45,8 @@ with **no external dependencies** (uses only the Python standard library).
 | Delete a page                                        | `delete-page ID` |
 | Get all blocks (content) of a page                   | `get-blocks --page ID` |
 | Get blocks as flat list (for bulk ops/reordering)    | `get-blocks --page ID --flat` |
+| **Read page as text (understand current content)**   | `read-page --page ID` |
+| **Insert block(s) at a specific position**           | `insert-block --page ID --after BLOCK_ID --type TYPE --title "..."` |
 | Create a single block                                | `create-block --page ID --type TYPE --title "..."` |
 | **Write multi-block content (articles, docs)**       | `create-blocks --page ID --blocks-json '[...]'` |
 | Update a block's content                             | `update-block ID --title "new content"` |
@@ -161,6 +163,8 @@ python scripts/suppa_api.py <command> [options]
 | Command            | Purpose                                                  |
 | ------------------ | -------------------------------------------------------- |
 | `get-blocks`       | Get all blocks of a page (`--page ID`), tree-expanded    |
+| `read-page`        | **Read page as markdown/plain text** (for understanding content) |
+| `insert-block`     | **Insert block(s) after a specific block** (repositions tail) |
 | `create-block`     | Create a single block in a page                          |
 | `create-blocks`    | **Batch-create multiple blocks** from JSON array         |
 | `update-block ID`  | Update block content, type, or format                    |
@@ -282,11 +286,62 @@ Tables use a special structure in `properties.table`:
 When creating table blocks via CLI, pass this as `--table-json`.
 Set block `--type table` and `--title ""` (empty).
 
-### 3.5 Block ordering
+### 3.5 Block ordering and positioning
 
 - Blocks are ordered server-side via the `#custom_order` function.
-- New blocks are appended at the end by default.
+- **New blocks are ALWAYS appended at the END.** There is no API to insert
+  between existing blocks directly.
 - To nest blocks, use `--parent BLOCK_ID` on create or `move-block ID --parent PID`.
+- **To modify content at a specific position, use `update-block ID`.**
+- **To insert content at a specific position, use `insert-block`:**
+  ```powershell
+  # Insert a single block after block 4414
+  python scripts/suppa_api.py insert-block --page 13 --after 4414 --type callout --title "<p>Important note</p>"
+
+  # Insert multiple blocks after block 4414
+  python scripts/suppa_api.py insert-block --page 13 --after 4414 --blocks-json '[{"type":"head2","title":"<p>New Section</p>"},{"type":"text","title":"<p>Content here</p>"}]'
+  ```
+  **How it works:** The command deletes all blocks after the target, then
+  batch-creates [new blocks] + [deleted tail] to preserve correct order.
+  Block IDs of tail blocks will change (they're recreated).
+- **Practical agent strategy:**
+  - For appending new content → use `create-blocks`
+  - For editing existing content → use `update-block`
+  - For inserting at a specific position → use `insert-block --after ID`
+  - For replacing a section → delete old blocks + create new ones
+
+### 3.6 Reading page content (`read-page`)
+
+The `read-page` command extracts all blocks as readable text (markdown or plain).
+Use it to **understand current page content before making edits**.
+
+```powershell
+# Output to terminal (agent reads directly from stdout)
+python scripts/suppa_api.py read-page --page 12
+
+# Plain text format
+python scripts/suppa_api.py read-page --page 12 --format plain
+
+# For very large pages (>1000 blocks), write to file then read portions
+python scripts/suppa_api.py read-page --page 12 --output page.txt
+```
+
+**Agent workflow:** Always use `read-page` (stdout) to inspect content.
+Do NOT use `--output` unless the page is too large for terminal output.
+The text includes block type formatting:
+- Headings → `#`, `##`, `###`
+- Bullets → `- text`
+- Numbered → `1. text`
+- Checkboxes → `- [x]` or `- [ ]`
+- Quotes → `> text`
+- Tables → pipe-delimited markdown tables
+- Links → URL from `properties.url`
+- Embeds → URL from `properties.embed_url`
+- YouTube → URL from `properties.youtube_url`
+- Code → fenced code blocks
+
+To get block IDs alongside content (for targeted updates), use
+`get-blocks --page ID --flat` instead.
 
 ---
 

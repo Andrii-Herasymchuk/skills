@@ -26,6 +26,8 @@ Commands:
     update-page         Update page properties
     delete-page         Soft-delete a page
     get-blocks          Get all blocks of a page (tree-expanded)
+    read-page           Read page content as plain text / markdown
+    insert-block        Insert block(s) after a specific block
     create-block        Create a single block in a page
     create-blocks       Batch-create multiple blocks in a page
     update-block        Update block content/type/format
@@ -39,6 +41,7 @@ import argparse
 import json
 import os
 import random
+import re
 import sys
 import uuid
 from urllib.request import Request, urlopen
@@ -590,6 +593,283 @@ def cmd_get_blocks(args):
     _print(res)
 
 
+def _strip_html(html):
+    """Strip HTML tags and decode entities, returning plain text."""
+    if not html:
+        return ""
+    # Replace <br> and </p><p> with newlines
+    text = re.sub(r'<br\s*/?>', '\n', html)
+    text = re.sub(r'</p>\s*<p[^>]*>', '\n', text)
+    # Strip all remaining tags
+    text = re.sub(r'<[^>]+>', '', text)
+    # Decode common HTML entities
+    text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+    text = text.replace('&quot;', '"').replace('&#39;', "'").replace('&nbsp;', ' ')
+    return text.strip()
+
+
+def _block_to_text(block, fmt="markdown", indent=0):
+    """Convert a single block to readable text."""
+    btype = block.get("type", "text")
+    props = block.get("properties", {})
+    title = props.get("title", "")
+    text = _strip_html(title) if btype != "code" else title
+    prefix = "  " * indent
+
+    if fmt == "markdown":
+        if btype == "head1":
+            return prefix + "# " + text
+        elif btype == "head2":
+            return prefix + "## " + text
+        elif btype == "head3":
+            return prefix + "### " + text
+        elif btype == "bulletList":
+            return prefix + "- " + text
+        elif btype == "numberedList":
+            return prefix + "1. " + text
+        elif btype == "checkList":
+            checked = props.get("checked", False)
+            mark = "x" if checked else " "
+            return prefix + "- [{0}] {1}".format(mark, text)
+        elif btype == "quote":
+            return prefix + "> " + text
+        elif btype == "callout":
+            color = block.get("format", {}).get("block_color", "")
+            label = {"blue": "INFO", "yellow": "WARNING", "red": "DANGER",
+                     "green": "SUCCESS"}.get(color, "NOTE")
+            return prefix + "> **{0}:** {1}".format(label, text)
+        elif btype == "code":
+            lang = props.get("language", "")
+            lines = text.split('\n')
+            return prefix + "```{0}\n".format(lang) + prefix + ('\n' + prefix).join(lines) + "\n" + prefix + "```"
+        elif btype == "divider":
+            return prefix + "---"
+        elif btype == "table":
+            table = props.get("table", {})
+            rows = table.get("rows", [])
+            if not rows:
+                return prefix + "[empty table]"
+            lines = []
+            for i, row in enumerate(rows):
+                cells = [_strip_html(c.get("content", "")) for c in row.get("cells", [])]
+                lines.append(prefix + "| " + " | ".join(cells) + " |")
+                if i == 0 and table.get("headerRow"):
+                    lines.append(prefix + "| " + " | ".join(["---"] * len(cells)) + " |")
+            return "\n".join(lines)
+        elif btype == "toggle":
+            return prefix + "<details> " + text
+        elif btype == "youtube":
+            url = props.get("youtube_url", "")
+            return prefix + "[youtube] " + url
+        elif btype == "links":
+            url = props.get("url", "") or text
+            label = text if text != url else ""
+            if label:
+                return prefix + "[{0}]({1})".format(label, url)
+            return prefix + url
+        elif btype == "embed":
+            url = props.get("embed_url", "") or text
+            label = text if text and text != url else ""
+            if label:
+                return prefix + "[embed: {0}]({1})".format(label, url)
+            return prefix + "[embed] " + url
+        elif btype in ("banner", "attachment", "page", "column_list"):
+            return prefix + "[{0}] {1}".format(btype, text) if text else prefix + "[{0}]".format(btype)
+        else:
+            return prefix + text
+    else:  # plain text
+        if btype in ("head1", "head2", "head3"):
+            return prefix + text.upper() if text else ""
+        elif btype == "bulletList":
+            return prefix + "* " + text
+        elif btype == "numberedList":
+            return prefix + "- " + text
+        elif btype == "checkList":
+            checked = props.get("checked", False)
+            mark = "[x]" if checked else "[ ]"
+            return prefix + mark + " " + text
+        elif btype == "divider":
+            return prefix + "---"
+        elif btype == "table":
+            table = props.get("table", {})
+            rows = table.get("rows", [])
+            lines = []
+            for row in rows:
+                cells = [_strip_html(c.get("content", "")) for c in row.get("cells", [])]
+                lines.append(prefix + " | ".join(cells))
+            return "\n".join(lines)
+        elif btype == "youtube":
+            return prefix + props.get("youtube_url", "")
+        elif btype == "links":
+            return prefix + (props.get("url", "") or text)
+        elif btype == "embed":
+            return prefix + (props.get("embed_url", "") or text)
+        else:
+            return prefix + text
+
+
+def cmd_read_page(args):
+    """Read all blocks of a page and output as readable text."""
+    page_id = int(args.page)
+    fmt = getattr(args, "format", "markdown") or "markdown"
+    with_ids = getattr(args, "with_ids", False)
+
+    # Fetch all blocks in order
+    body = {
+        "fields": {
+            "id": True, "type": True, "format": True, "properties": True,
+            "parent": {"id": True}, "children": True,
+        },
+        "conditions": _conditions([
+            _filter("page.id", str(page_id), "="),
+        ]),
+        "orderBy": [{"field": "page", "order": "desc",
+                     "function": "#custom_order", "args": [page_id]}],
+        "includeDeletedRelations": True,
+    }
+    blocks = make_request("POST", _data_url(ENTITY_PAGE_BLOCKS, "select") + "?markAsView=false", body)
+
+    if not blocks:
+        sys.stderr.write("No blocks found on page {0}.\n".format(page_id))
+        sys.exit(0)
+
+    # Convert to text
+    lines = []
+    for block in blocks:
+        line = _block_to_text(block, fmt)
+        if line:
+            if with_ids:
+                block_id = block.get("id", "?")
+                lines.append("[{0}] {1}".format(block_id, line))
+            else:
+                lines.append(line)
+
+    output = "\n".join(lines)
+    if getattr(args, "output", None):
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(output)
+        sys.stderr.write("Written to {0} ({1} blocks)\n".format(args.output, len(blocks)))
+    else:
+        print(output)
+
+
+def cmd_insert_block(args):
+    """Insert block(s) after a specific block by deleting tail and recreating.
+
+    Strategy: get all blocks in order → find target → delete everything after →
+    batch-create [new blocks] + [deleted tail] to preserve order.
+    """
+    page_id = int(args.page)
+    after_id = int(args.after)
+
+    # Build the new block(s) to insert
+    if args.blocks_file:
+        with open(args.blocks_file, "r", encoding="utf-8-sig") as f:
+            new_blocks_data = json.load(f)
+    elif args.blocks_json:
+        new_blocks_data = json.loads(args.blocks_json)
+    else:
+        # Single block from flags
+        block_type = args.type or "text"
+        props = _build_block_properties(
+            block_type, args.title, getattr(args, "table_json", None))
+        new_blocks_data = [{"type": block_type, "title": None, "properties": props,
+                            "format": json.loads(args.format_json) if args.format_json else {"block_color": ""}}]
+
+    if not isinstance(new_blocks_data, list):
+        new_blocks_data = [new_blocks_data]
+
+    # Step 1: Get all top-level blocks in order
+    body = {
+        "fields": {"id": True, "type": True, "properties": True, "format": True,
+                   "parent": {"id": True}, "children": True},
+        "conditions": _conditions([
+            _filter("page.id", str(page_id), "="),
+            _filter("parent", None, "="),
+        ]),
+        "orderBy": [{"field": "page", "order": "desc",
+                     "function": "#custom_order", "args": [page_id]}],
+        "includeDeletedRelations": True,
+    }
+    blocks = make_request("POST", _data_url(ENTITY_PAGE_BLOCKS, "select") + "?markAsView=false", body)
+
+    # Step 2: Find the target block position
+    target_idx = None
+    for i, b in enumerate(blocks):
+        if b["id"] == after_id:
+            target_idx = i
+            break
+
+    if target_idx is None:
+        sys.stderr.write("Block {0} not found on page {1}.\n".format(after_id, page_id))
+        sys.exit(2)
+
+    # Step 3: Identify tail blocks (everything after target)
+    tail_blocks = blocks[target_idx + 1:]
+
+    if not tail_blocks:
+        # Nothing after target - just append normally
+        insert_fields = []
+        for bd in new_blocks_data:
+            btype = bd.get("type", "text")
+            if "properties" in bd and isinstance(bd["properties"], dict):
+                props = bd["properties"]
+            else:
+                props = _build_block_properties(btype, bd.get("title", ""), bd.get("table"))
+            insert_fields.append({
+                "page": {"id": page_id},
+                "type": btype,
+                "properties": props,
+                "format": bd.get("format", {"block_color": ""}),
+            })
+        res = make_request("POST", _data_url(ENTITY_PAGE_BLOCKS, "insert"),
+                          {"fields": insert_fields, "returning": {"id": True, "type": True}})
+        _print(res)
+        return
+
+    # Step 4: Delete tail blocks
+    tail_ids = [b["id"] for b in tail_blocks]
+    filters = [_filter("id", bid, "=") for bid in tail_ids]
+    make_request("POST", _data_url(ENTITY_PAGE_BLOCKS, "remove"),
+                {"conditions": _conditions(filters, operator="or")})
+
+    # Step 5: Build batch insert: [new_blocks] + [recreated tail]
+    insert_fields = []
+
+    # New blocks
+    for bd in new_blocks_data:
+        btype = bd.get("type", "text")
+        if "properties" in bd and isinstance(bd["properties"], dict):
+            props = bd["properties"]
+        else:
+            props = _build_block_properties(btype, bd.get("title", ""), bd.get("table"))
+        insert_fields.append({
+            "page": {"id": page_id},
+            "type": btype,
+            "properties": props,
+            "format": bd.get("format", {"block_color": ""}),
+        })
+
+    # Recreate tail blocks (preserving their content)
+    for b in tail_blocks:
+        insert_fields.append({
+            "page": {"id": page_id},
+            "type": b["type"],
+            "properties": b.get("properties", {}),
+            "format": b.get("format", {"block_color": ""}),
+        })
+
+    res = make_request("POST", _data_url(ENTITY_PAGE_BLOCKS, "insert"),
+                      {"fields": insert_fields, "returning": {"id": True, "type": True}})
+
+    # Report
+    new_count = len(new_blocks_data)
+    new_ids = [r["id"] for r in res[:new_count]]
+    sys.stderr.write("Inserted {0} block(s) after [{1}]. New IDs: {2}. Recreated {3} tail blocks.\n".format(
+        new_count, after_id, new_ids, len(tail_blocks)))
+    _print(res[:new_count])
+
+
 def cmd_create_block(args):
     """Create a single block in a page."""
     page_id = int(args.page)
@@ -912,6 +1192,29 @@ HTML content rules:
     gb.add_argument("--flat", action="store_true", default=False,
                     help="Flat mode: return all blocks without tree nesting (useful for bulk ops)")
     gb.set_defaults(func=cmd_get_blocks)
+
+    # Read page content as text
+    rp = sub.add_parser("read-page", help="Read page content as readable text (markdown or plain)")
+    rp.add_argument("--page", required=True, type=int, help="Page id")
+    rp.add_argument("--format", choices=["markdown", "plain"], default="markdown",
+                    help="Output format (default: markdown)")
+    rp.add_argument("--with-ids", action="store_true", default=False,
+                    help="Prefix each line with [block_id] for targeted updates")
+    rp.add_argument("--output", "-o", help="Write output to file instead of stdout")
+    rp.set_defaults(func=cmd_read_page)
+
+    # Insert block after a specific block
+    ib = sub.add_parser("insert-block", help="Insert block(s) AFTER a specific block (repositions tail)")
+    ib.add_argument("--page", required=True, type=int, help="Page id")
+    ib.add_argument("--after", required=True, type=int, help="Block ID to insert after")
+    ib.add_argument("--type", default="text", choices=BLOCK_TYPES,
+                    help="Block type for single-block insert (default: text)")
+    ib.add_argument("--title", help="HTML content for single-block insert")
+    ib.add_argument("--format-json", help='Format JSON, e.g. {"block_color":"blue"}')
+    ib.add_argument("--table-json", help="Table data JSON (for table blocks)")
+    ib.add_argument("--blocks-json", help="JSON array of blocks to insert (for multi-block insert)")
+    ib.add_argument("--blocks-file", help="Path to JSON file with blocks array")
+    ib.set_defaults(func=cmd_insert_block)
 
     # Single block creation
     cb = sub.add_parser("create-block", help="Create a single block in a page")
