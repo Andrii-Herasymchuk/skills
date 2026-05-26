@@ -237,7 +237,7 @@ def insert_entity(entity, fields_list, *, returning=None, token=None):
 def update_entity(entity, *, filters, fields, token=None):
     """POST /api/core/data/{entity}/update (with conditions)."""
     body = {
-        "fields": [fields] if isinstance(fields, dict) else fields,
+        "fields": fields if isinstance(fields, dict) else fields[0],
         "conditions": {
             "operator": "and",
             "filters": _normalize_filters(filters),
@@ -469,21 +469,34 @@ def auto_layout(fields, columns_number=1):
 # ---------------------------------------------------------------------------
 
 def convert_entity_prop(prop, entity_name):
-    """Convert a backend entity property object to a form schema field."""
-    prop_type = prop.get("type", "String")
+    """Convert a backend entity property object to a form schema field.
+
+    Real schema API format:
+      - type: "many-to-one"|"one-to-many"|"many-to-many"|"text"|"timestamp"|"enum"|...
+      - relationTarget: "Users" (string, at root level)
+      - representativeField: {id, name, type} (object)
+      - subType: "timestamp"|"html_text"|"icon"|"ucid_prefix"|null
+      - title: {en: "...", id: N, key: "...", name: "..."}
+    """
+    prop_type = prop.get("type", "text")
     prop_name = prop.get("name", "field")
     prop_title = prop.get("title", {})
-    sub_type = prop.get("sub_type", "")
-    relation = prop.get("relation", {})
+    sub_type = prop.get("subType") or prop.get("sub_type") or ""
+    relation_target = prop.get("relationTarget", "")
+    representative = prop.get("representativeField", {})
+    rep_field_name = representative.get("name", "title") if isinstance(representative, dict) else str(representative or "title")
+
+    # Determine if relation type
+    is_relation = prop_type in ("many-to-one", "one-to-many", "many-to-many", "relation")
+    is_many = prop_type in ("many-to-many", "one-to-many")
 
     # Determine form field type
-    if prop_type == "relation":
-        target_entity = relation.get("relation_target_entity_name", "")
-        form_type = "userSelect" if target_entity == "Users" else "select"
+    if is_relation:
+        form_type = "userSelect" if relation_target == "Users" else "select"
     elif prop_type in ("enum", "custom_enum", "Enum"):
         form_type = "select"
-    elif prop_type in ("String", "Text"):
-        if sub_type == "html_text":
+    elif prop_type == "text":
+        if sub_type == "html_text" or "html" in prop_name.lower():
             form_type = "richtext"
         elif sub_type == "icon":
             form_type = "icon"
@@ -491,8 +504,22 @@ def convert_entity_prop(prop, entity_name):
             form_type = "ucidPrefix"
         else:
             form_type = "text"
+    elif prop_type in ("timestamp", "Timestamp", "DateTime"):
+        form_type = "date"
+    elif prop_type in ("date", "Date"):
+        form_type = "date"
+    elif prop_type in ("time", "Time"):
+        form_type = "date"
     elif prop_type in ENTITY_TYPE_MAP:
         form_type = ENTITY_TYPE_MAP[prop_type][0]
+    elif prop_type.lower() in ("integer", "number", "float", "decimal"):
+        form_type = "text"
+    elif prop_type.lower() == "boolean":
+        form_type = "toogle"
+    elif prop_type.lower() in ("json",):
+        form_type = "json"
+    elif prop_type.lower() in ("file", "files", "attachment"):
+        form_type = "files"
     else:
         form_type = "text"
 
@@ -511,34 +538,34 @@ def convert_entity_prop(prop, entity_name):
     if form_type == "text" and prop_type in ENTITY_TYPE_MAP:
         extra = ENTITY_TYPE_MAP[prop_type][1]
         field.update(extra)
+    elif form_type == "text" and prop_type.lower() in ("integer", "number", "float", "decimal"):
+        field["inputType"] = "number"
+        field["rules"] = field.get("rules", []) + ["numeric"]
     elif form_type == "date":
-        if sub_type in ("DateTime", "timestamp"):
+        if prop_type in ("timestamp", "Timestamp", "DateTime") or sub_type in ("timestamp", "DateTime"):
             field["typeDate"] = "dateTime"
-        elif sub_type in ("Time", "time"):
+        elif prop_type in ("time", "Time") or sub_type in ("time", "Time"):
             field["typeDate"] = "time"
         else:
             field["typeDate"] = "date"
     elif form_type == "userSelect":
         field["items"] = {
-            "targetEntityName": relation.get("relation_target_entity_name", "Users"),
+            "targetEntityName": relation_target or "Users",
             "targetValueField": "id",
-            "targetLabelField": relation.get("representativeField", "fullName"),
+            "targetLabelField": rep_field_name or "fullName",
         }
-        field["options"] = {
-            "multiple": relation.get("relation_type") in ("many-to-many", "one-to-many"),
-        }
+        field["options"] = {"multiple": is_many}
         field["additionalRequestFields"] = ["firstName", "lastName", "fullName", "avatar", "position"]
-    elif form_type == "select" and prop_type == "relation":
+    elif form_type == "select" and is_relation:
         field["items"] = {
-            "targetEntityId": relation.get("relation_target_entity_id"),
-            "targetEntityName": relation.get("relation_target_entity_name", ""),
-            "targetValueField": relation.get("value_prop", "id"),
-            "targetLabelField": relation.get("representativeField", "title"),
+            "targetEntityName": relation_target,
+            "targetValueField": "id",
+            "targetLabelField": rep_field_name or "title",
         }
         field["options"] = {
             "valueIsObject": True,
             "usePreLoadItemsFunction": True,
-            "multiple": relation.get("relation_type") in ("many-to-many", "one-to-many"),
+            "multiple": is_many,
         }
     elif form_type == "select" and prop_type in ("enum", "custom_enum", "Enum"):
         custom_enum = prop.get("custom_enum", {})
@@ -549,23 +576,24 @@ def convert_entity_prop(prop, entity_name):
             "targetValueField": "id",
             "targetLabelField": "title",
         }
-        field["options"] = {"valueIsObject": True, "multiple": prop.get("multiple", False)}
+        field["options"] = {"valueIsObject": True, "multiple": prop.get("isArray", False)}
     elif form_type == "files":
-        field["options"] = {"multiple": prop.get("multiple", True)}
+        field["options"] = {"multiple": prop.get("isArray", True)}
 
     # Validation rules
-    rules = []
+    rules = field.get("rules", [])
     if prop.get("required") == "always" or prop.get("notNull"):
-        rules.append("required")
+        if "required" not in rules:
+            rules.append("required")
     if sub_type == "email":
         rules.append("email")
-    max_length = prop.get("max_length")
+    max_length = prop.get("maxLength") or prop.get("max_length")
     if max_length:
         rules.append("maxLength:{0}".format(max_length))
-    precision = prop.get("precision")
-    if precision is not None:
+    precision = prop.get("decimalPlaces") or prop.get("precision")
+    if precision:
         rules.append("decimalPlaces:{0}".format(precision))
-    if prop.get("only_positive"):
+    if prop.get("isOnlyPositive") or prop.get("only_positive"):
         rules.append("isOnlyPositive")
     if rules:
         field["rules"] = rules
@@ -594,12 +622,14 @@ def generate_schema_from_entity(entity_name, field_names=None, columns_number=1)
     elif isinstance(schema_data, list):
         props = schema_data
 
-    # Filter
+    # Filter and preserve requested order
     if field_names:
-        names_set = set(field_names)
-        props = [p for p in props if p.get("name") in names_set]
+        # Build a lookup dict for quick access
+        prop_map = {p.get("name"): p for p in props}
+        props = [prop_map[n] for n in field_names if n in prop_map]
     else:
-        props = [p for p in props if not p.get("system", False)]
+        # Exclude system/internal fields
+        props = [p for p in props if not p.get("system", False) and p.get("initiator") == "client"]
 
     # Convert
     fields = []
