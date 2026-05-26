@@ -291,8 +291,9 @@ def create_form(form_view):
 
 
 def update_form_by_id(form_id, update_data):
-    """Update a form by ID."""
-    return update_entity(ENTITY_FORMS, filters=[("id", int(form_id), "=")], fields=update_data)
+    """Update a form by ID using /api/core/data/Forms/update/{id}."""
+    body = {"fields": update_data}
+    return make_request("POST", "/api/core/data/{0}/update/{1}".format(ENTITY_FORMS, int(form_id)), body)
 
 
 def get_entity_schema(entity_name):
