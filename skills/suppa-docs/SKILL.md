@@ -46,7 +46,7 @@ with **no external dependencies** (uses only the Python standard library).
 | Get all blocks (content) of a page                   | `get-blocks --page ID` |
 | Get blocks as flat list (for bulk ops/reordering)    | `get-blocks --page ID --flat` |
 | **Read page as text (understand current content)**   | `read-page --page ID` |
-| **Insert block(s) at a specific position**           | `insert-block --page ID --after BLOCK_ID --type TYPE --title "..."` |
+| **Insert block(s) at a specific position**           | `insert-block --page ID --after BLOCK_ID --type TYPE --title "..."`<br>or `insert-block --page ID --before BLOCK_ID ...` |
 | Create a single block                                | `create-block --page ID --type TYPE --title "..."` |
 | **Write multi-block content (articles, docs)**       | `create-blocks --page ID --blocks-json '[...]'` |
 | Update a block's content                             | `update-block ID --title "new content"` |
@@ -54,6 +54,7 @@ with **no external dependencies** (uses only the Python standard library).
 | Delete a single block                                | `delete-block ID` |
 | **Bulk-delete multiple blocks (clear page)**         | `delete-blocks ID1 ID2 ID3 ...` |
 | Move/reparent a block                                | `move-block ID --parent PID [--page NEW_PAGE_ID]` |
+| **Reorder existing blocks**                          | `reorder-blocks ID1 ID2 --page PID --after TARGET` |
 | Arbitrary API call                                   | `raw ENTITY --action ACTION --body '{...}'` |
 
 ### 0.3 Hard rules
@@ -164,13 +165,14 @@ python scripts/suppa_api.py <command> [options]
 | ------------------ | -------------------------------------------------------- |
 | `get-blocks`       | Get all blocks of a page (`--page ID`), tree-expanded    |
 | `read-page`        | **Read page as markdown/plain text** (for understanding content) |
-| `insert-block`     | **Insert block(s) after a specific block** (repositions tail) |
+| `insert-block`     | **Insert block(s) after/before a specific block** (create + reorder) |
 | `create-block`     | Create a single block in a page                          |
 | `create-blocks`    | **Batch-create multiple blocks** from JSON array         |
 | `update-block ID`  | Update block content, type, or format                    |
 | `delete-block ID`  | Soft-delete a single block                               |
 | `delete-blocks`    | **Bulk-delete multiple blocks** (positional IDs)     |
 | `move-block ID`    | Move a block (change parent or page)                     |
+| `reorder-blocks`   | **Reorder blocks** within a page (after/before target)   |
 
 ### Power-user
 | Command            | Purpose                                                  |
@@ -289,8 +291,8 @@ Set block `--type table` and `--title ""` (empty).
 ### 3.5 Block ordering and positioning
 
 - Blocks are ordered server-side via the `#custom_order` function.
-- **New blocks are ALWAYS appended at the END.** There is no API to insert
-  between existing blocks directly.
+- **New blocks are ALWAYS appended at the END.** To position them elsewhere,
+  use the custom-order API (handled by `insert-block` and `reorder-blocks`).
 - To nest blocks, use `--parent BLOCK_ID` on create or `move-block ID --parent PID`.
 - **To modify content at a specific position, use `update-block ID`.**
 - **To insert content at a specific position, use `insert-block`:**
@@ -298,16 +300,29 @@ Set block `--type table` and `--title ""` (empty).
   # Insert a single block after block 4414
   python scripts/suppa_api.py insert-block --page 13 --after 4414 --type callout --title "<p>Important note</p>"
 
+  # Insert before a block
+  python scripts/suppa_api.py insert-block --page 13 --before 4414 --type head2 --title "<p>New Section</p>"
+
   # Insert multiple blocks after block 4414
   python scripts/suppa_api.py insert-block --page 13 --after 4414 --blocks-json '[{"type":"head2","title":"<p>New Section</p>"},{"type":"text","title":"<p>Content here</p>"}]'
   ```
-  **How it works:** The command deletes all blocks after the target, then
-  batch-creates [new blocks] + [deleted tail] to preserve correct order.
-  Block IDs of tail blocks will change (they're recreated).
+  **How it works:** The command creates blocks at the end of the page, then
+  calls the custom-order API (`/api/core/data/custom-order/PageBlocks`) to
+  reposition them after/before the target. Block IDs are stable — no
+  blocks are deleted or recreated.
+- **To reorder existing blocks:**
+  ```powershell
+  # Move blocks 4489, 4490 to be after block 4482
+  python scripts/suppa_api.py reorder-blocks 4489 4490 --page 13 --after 4482
+
+  # Move block 4489 to be before block 4482
+  python scripts/suppa_api.py reorder-blocks 4489 --page 13 --before 4482
+  ```
 - **Practical agent strategy:**
   - For appending new content → use `create-blocks`
   - For editing existing content → use `update-block`
-  - For inserting at a specific position → use `insert-block --after ID`
+  - For inserting at a specific position → use `insert-block --after ID` or `--before ID`
+  - For moving existing blocks → use `reorder-blocks`
   - For replacing a section → delete old blocks + create new ones
 
 ### 3.6 Reading page content (`read-page`)

@@ -152,6 +152,10 @@ def _data_url(entity, action):
     return "/api/core/data/{0}/{1}".format(entity, action)
 
 
+def _custom_order_url(entity):
+    return "/api/core/data/custom-order/{0}".format(entity)
+
+
 def _filter(field, value, comparator="="):
     return {
         "id": str(uuid.uuid4())[:8],
@@ -754,13 +758,18 @@ def cmd_read_page(args):
 
 
 def cmd_insert_block(args):
-    """Insert block(s) after a specific block by deleting tail and recreating.
+    """Insert block(s) after (or before) a specific block.
 
-    Strategy: get all blocks in order → find target → delete everything after →
-    batch-create [new blocks] + [deleted tail] to preserve order.
+    Strategy: batch-create new blocks (appended at end) → reorder them
+    to the desired position via the custom-order API.
     """
     page_id = int(args.page)
-    after_id = int(args.after)
+    after_id = int(args.after) if args.after else None
+    before_id = int(args.before) if getattr(args, "before", None) else None
+
+    if not after_id and not before_id:
+        sys.stderr.write("Provide --after or --before to position the block(s).\n")
+        sys.exit(2)
 
     # Build the new block(s) to insert
     if args.blocks_file:
@@ -779,64 +788,8 @@ def cmd_insert_block(args):
     if not isinstance(new_blocks_data, list):
         new_blocks_data = [new_blocks_data]
 
-    # Step 1: Get all top-level blocks in order
-    body = {
-        "fields": {"id": True, "type": True, "properties": True, "format": True,
-                   "parent": {"id": True}, "children": True},
-        "conditions": _conditions([
-            _filter("page.id", str(page_id), "="),
-            _filter("parent", None, "="),
-        ]),
-        "orderBy": [{"field": "page", "order": "desc",
-                     "function": "#custom_order", "args": [page_id]}],
-        "includeDeletedRelations": True,
-    }
-    blocks = make_request("POST", _data_url(ENTITY_PAGE_BLOCKS, "select") + "?markAsView=false", body)
-
-    # Step 2: Find the target block position
-    target_idx = None
-    for i, b in enumerate(blocks):
-        if b["id"] == after_id:
-            target_idx = i
-            break
-
-    if target_idx is None:
-        sys.stderr.write("Block {0} not found on page {1}.\n".format(after_id, page_id))
-        sys.exit(2)
-
-    # Step 3: Identify tail blocks (everything after target)
-    tail_blocks = blocks[target_idx + 1:]
-
-    if not tail_blocks:
-        # Nothing after target - just append normally
-        insert_fields = []
-        for bd in new_blocks_data:
-            btype = bd.get("type", "text")
-            if "properties" in bd and isinstance(bd["properties"], dict):
-                props = bd["properties"]
-            else:
-                props = _build_block_properties(btype, bd.get("title", ""), bd.get("table"))
-            insert_fields.append({
-                "page": {"id": page_id},
-                "type": btype,
-                "properties": props,
-                "format": bd.get("format", {"block_color": ""}),
-            })
-        res = make_request("POST", _data_url(ENTITY_PAGE_BLOCKS, "insert"),
-                          {"fields": insert_fields, "returning": {"id": True, "type": True}})
-        _print(res)
-        return
-
-    # Step 4: Delete tail blocks
-    tail_ids = [b["id"] for b in tail_blocks]
-    filters = [_filter("id", bid, "=") for bid in tail_ids]
-    make_request("POST", _data_url(ENTITY_PAGE_BLOCKS, "remove"),
-                {"conditions": _conditions(filters, operator="or")})
-
-    # Step 5: Build batch insert: [new_blocks] + [recreated tail]
+    # Step 1: Batch-create blocks (appended at end of page)
     insert_fields = []
-
-    # New blocks
     for bd in new_blocks_data:
         btype = bd.get("type", "text")
         if "properties" in bd and isinstance(bd["properties"], dict):
@@ -850,24 +803,36 @@ def cmd_insert_block(args):
             "format": bd.get("format", {"block_color": ""}),
         })
 
-    # Recreate tail blocks (preserving their content)
-    for b in tail_blocks:
-        insert_fields.append({
-            "page": {"id": page_id},
-            "type": b["type"],
-            "properties": b.get("properties", {}),
-            "format": b.get("format", {"block_color": ""}),
-        })
-
     res = make_request("POST", _data_url(ENTITY_PAGE_BLOCKS, "insert"),
                       {"fields": insert_fields, "returning": {"id": True, "type": True}})
 
-    # Report
-    new_count = len(new_blocks_data)
-    new_ids = [r["id"] for r in res[:new_count]]
-    sys.stderr.write("Inserted {0} block(s) after [{1}]. New IDs: {2}. Recreated {3} tail blocks.\n".format(
-        new_count, after_id, new_ids, len(tail_blocks)))
-    _print(res[:new_count])
+    new_ids = [r["id"] for r in res]
+
+    # Step 2: Reorder — move new blocks after/before the target.
+    # API semantics: "beforeInstanceId" = anchor comes BEFORE items = items go AFTER anchor
+    #               "afterInstanceId"  = anchor comes AFTER items  = items go BEFORE anchor
+    # NOTE: The API reverses multi-block order in both cases,
+    #       so we always reverse the list to get correct final order.
+    reorder_body = {
+        "instanceIds": list(reversed(new_ids)),
+        "contextFieldName": "page",
+        "contextValue": page_id,
+        "updates": {},
+    }
+    if after_id:
+        reorder_body["beforeInstanceId"] = after_id
+    elif before_id:
+        reorder_body["afterInstanceId"] = before_id
+
+    make_request("POST", _custom_order_url(ENTITY_PAGE_BLOCKS), reorder_body)
+
+    sys.stderr.write("Inserted {0} block(s) {1} [{2}]. New IDs: {3}\n".format(
+        len(new_ids),
+        "after" if after_id else "before",
+        after_id or before_id,
+        new_ids,
+    ))
+    _print(res)
 
 
 def cmd_create_block(args):
@@ -1040,6 +1005,46 @@ def cmd_move_block(args):
     _print(res)
 
 
+def cmd_reorder_blocks(args):
+    """Reorder blocks within a page using the custom-order API.
+
+    API semantics (counter-intuitive naming):
+      - "beforeInstanceId" = anchor stays BEFORE the moved items = items go AFTER anchor
+      - "afterInstanceId"  = anchor stays AFTER the moved items  = items go BEFORE anchor
+    """
+    page_id = int(args.page)
+    block_ids = [int(bid) for bid in args.ids]
+
+    after_id = int(args.after) if args.after else None
+    before_id = int(args.before) if args.before else None
+
+    if not after_id and not before_id:
+        sys.stderr.write("Provide --after or --before to specify target position.\n")
+        sys.exit(2)
+
+    # NOTE: The API reverses multi-block order in both cases,
+    #       so we always reverse the list to get correct final order.
+    body = {
+        "instanceIds": list(reversed(block_ids)),
+        "contextFieldName": "page",
+        "contextValue": page_id,
+        "updates": {},
+    }
+    if after_id:
+        body["beforeInstanceId"] = after_id
+    elif before_id:
+        body["afterInstanceId"] = before_id
+
+    res = make_request("POST", _custom_order_url(ENTITY_PAGE_BLOCKS), body)
+    sys.stderr.write("Reordered {0} block(s) {1} [{2}] on page {3}.\n".format(
+        len(block_ids),
+        "after" if after_id else "before",
+        after_id or before_id,
+        page_id,
+    ))
+    _print(res)
+
+
 # ---------------------------------------------------------------------------
 # Raw command
 # ---------------------------------------------------------------------------
@@ -1203,10 +1208,11 @@ HTML content rules:
     rp.add_argument("--output", "-o", help="Write output to file instead of stdout")
     rp.set_defaults(func=cmd_read_page)
 
-    # Insert block after a specific block
-    ib = sub.add_parser("insert-block", help="Insert block(s) AFTER a specific block (repositions tail)")
+    # Insert block after/before a specific block
+    ib = sub.add_parser("insert-block", help="Insert block(s) after/before a specific block (via custom-order API)")
     ib.add_argument("--page", required=True, type=int, help="Page id")
-    ib.add_argument("--after", required=True, type=int, help="Block ID to insert after")
+    ib.add_argument("--after", help="Block ID to insert AFTER")
+    ib.add_argument("--before", help="Block ID to insert BEFORE")
     ib.add_argument("--type", default="text", choices=BLOCK_TYPES,
                     help="Block type for single-block insert (default: text)")
     ib.add_argument("--title", help="HTML content for single-block insert")
@@ -1266,6 +1272,14 @@ HTML content rules:
     mb.add_argument("--parent", help="New parent block id (or 'null' for top-level)")
     mb.add_argument("--page", type=int, help="Move to different page")
     mb.set_defaults(func=cmd_move_block)
+
+    # Reorder blocks
+    rb = sub.add_parser("reorder-blocks", help="Reorder blocks within a page (move after/before a target)")
+    rb.add_argument("ids", nargs="+", help="Block IDs to move")
+    rb.add_argument("--page", required=True, type=int, help="Page id")
+    rb.add_argument("--after", help="Place blocks AFTER this block ID")
+    rb.add_argument("--before", help="Place blocks BEFORE this block ID")
+    rb.set_defaults(func=cmd_reorder_blocks)
 
     # --- Raw ---
     rs = sub.add_parser("raw", help="Raw POST to /api/core/data/{entity}/{action}[/{id}]")

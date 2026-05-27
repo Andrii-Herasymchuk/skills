@@ -22,6 +22,7 @@ POST  /api/core/data/{Entity}/select?markAsView=false  # single-row fetch (retur
 POST  /api/core/data/{Entity}/insert                  # create row(s)
 POST  /api/core/data/{Entity}/update/{id}             # update a single record by id
 POST  /api/core/data/{Entity}/remove                  # soft-delete by filter
+POST  /api/core/data/custom-order/{Entity}            # reorder records (custom ordering)
 POST  /api/auth/accounts/login                        # exchange creds -> JWT
 ```
 
@@ -360,6 +361,43 @@ POST /api/core/data/PageBlocks/update/42
 ```
 
 To move to top-level: `"parent": null`
+
+### 3.6 Reorder blocks (custom-order API)
+
+```json
+POST /api/core/data/custom-order/PageBlocks
+
+{
+  "instanceIds": [4489, 4490],
+  "beforeInstanceId": 4482,
+  "contextFieldName": "page",
+  "contextValue": 67,
+  "updates": {}
+}
+```
+
+**IMPORTANT — counter-intuitive field naming:**
+
+| Field               | Meaning                                                      |
+| ------------------- | ------------------------------------------------------------ |
+| `instanceIds`       | Block IDs to move                                            |
+| `beforeInstanceId`  | Anchor block that will stay BEFORE the moved items (= items go **AFTER** anchor) |
+| `afterInstanceId`   | Anchor block that will stay AFTER the moved items (= items go **BEFORE** anchor) |
+| `contextFieldName`  | Always `"page"` for PageBlocks                               |
+| `contextValue`      | Page ID (integer)                                            |
+| `updates`           | Additional field updates (usually `{}`)                      |
+
+**IMPORTANT — multi-block ordering quirk:**
+
+When multiple `instanceIds` are provided, the API places them in **reverse order**.
+To get blocks to appear in the order [A, B, C], pass `"instanceIds": [C, B, A]` (reversed).
+The script handles this automatically.
+
+**Examples:**
+- Place blocks 4489, 4490 (in that order) AFTER block 4482: `{"instanceIds": [4490,4489], "beforeInstanceId": 4482, ...}`
+- Place block 4489 BEFORE block 4482: `{"instanceIds": [4489], "afterInstanceId": 4482, ...}`
+
+Response: `null` on success.
 
 ---
 
