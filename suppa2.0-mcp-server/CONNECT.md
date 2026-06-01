@@ -33,7 +33,7 @@ in the model context.
 - A Suppa token. Either:
   - a **user JWT** (full access incl. Tasks) — copy the `accessToken` cookie from
     the browser while logged into `modern.suppa.me`, or
-  - an **integrator API key** (Docs/Entities/Forms/Users).
+  - an ** API key** (Docs/Entities/Forms/Users).
 
 ### 2.2 Install the server
 ```bash
@@ -84,20 +84,30 @@ Edit `claude_desktop_config.json`
 ```
 
 ### VS Code (GitHub Copilot agent mode)
-Create `.vscode/mcp.json` in your workspace:
+Create `.vscode/mcp.json` in your workspace. Use an **input prompt** so you are
+asked for the token in a **masked modal** — it is stored in VS Code's secret
+storage (OS keychain) and never written to disk or sent to the chat:
 ```json
 {
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "suppa-token",
+      "description": "Suppa API token (user JWT for full Tasks access)",
+      "password": true
+    }
+  ],
   "servers": {
     "suppa": {
       "command": "python",
       "args": ["-m", "suppa_mcp"],
-      "env": { "SUPPA_API_KEY": "your-token-here" }
+      "env": { "SUPPA_API_KEY": "${input:suppa-token}" }
     }
   }
 }
 ```
-Then open the Copilot Chat **Agent** mode → the `suppa_*` tools appear in the tool
-picker.
+Start the `suppa` server (or open Copilot Chat **Agent** mode) → VS Code shows the
+masked prompt once → the `suppa_*` tools appear in the tool picker.
 
 ### Cursor
 `Settings → MCP → Add new server`:
@@ -115,8 +125,23 @@ picker.
 Add a stdio server with command `python`, args `["-m", "suppa_mcp"]`, and the
 `SUPPA_API_KEY` environment variable. That is all any compliant client needs.
 
-> Tip: prefer the `env` block over a committed `.env` so each developer keeps
-> their own token. Never commit real tokens.
+### Claude Code (CLI)
+If this server is delivered as a **plugin**, Claude Code prompts for the token in
+a **masked modal** at enable time (via the plugin's `userConfig`) and stores it
+in your system keychain — no token in chat, no token on disk.
+
+To register the server manually instead, run:
+```bash
+claude mcp add suppa -- python -m suppa_mcp
+```
+Claude Code stores the server config in `~/.claude.json` under your user profile.
+Provide the token via your shell environment (`SUPPA_API_KEY`) so it is not
+written into a shared config file.
+
+Start a new session and verify with `/mcp` — you should see **suppa** with 50 tools listed.
+
+> Never paste real tokens into the chat, into a committed `.env`, or into a
+> shared config. Prefer the masked modal prompt or your own shell environment.
 
 ---
 

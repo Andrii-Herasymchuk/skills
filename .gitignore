@@ -1,7 +1,6 @@
-# This repository publishes ONLY the Suppa 2.0 MCP Server.
+# This repository publishes the Suppa 2.0 MCP Server and the Suppa Development Plugin.
 # Local workspace artifacts are intentionally excluded from version control.
 .agents/
-.github/
 cli/
 skills/
 skills-lock.json

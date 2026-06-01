@@ -1,0 +1,24 @@
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "suppa-token",
+      "description": "Suppa API token (user JWT for full Tasks access, or integrator API key)",
+      "password": true
+    }
+  ],
+  "servers": {
+    "suppa": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "suppa_mcp"],
+      "cwd": "${workspaceFolder}/suppa2.0-mcp-server",
+      "env": {
+        "SUPPA_API_KEY": "${input:suppa-token}",
+        "SUPPA_BASE_URL": "https://modern.suppa.me",
+        "SUPPA_LANG": "en",
+        "SUPPA_TZ": "Europe/Kyiv"
+      }
+    }
+  }
+}
